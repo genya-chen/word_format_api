@@ -29,35 +29,70 @@ def index():
 def format_document():
     """处理文档格式修正请求"""
     try:
-        # 获取上传的文件
-        template_file = request.files.get('template')
-        input_file = request.files.get('input')
+        # 尝试从 JSON 获取 base64 编码的文件
+        if request.is_json:
+            data = request.get_json()
+            template_b64 = data.get('template')
+            input_b64 = data.get('input')
 
-        if not template_file or not input_file:
-            return jsonify({'error': '需要上传两个文件'}), 400
+            if not template_b64 or not input_b64:
+                return jsonify({'error': '缺少 template 或 input 参数'}), 400
 
-        # 保存临时文件
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_template:
-            template_file.save(tmp_template.name)
-            template_path = tmp_template.name
+            # 解码 base64
+            import base64
+            template_data = base64.b64decode(template_b64)
+            input_data = base64.b64decode(input_b64)
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_input:
-            input_file.save(tmp_input.name)
-            input_path = tmp_input.name
+            # 保存临时文件
+            tmp_dir = tempfile.gettempdir()
+            template_path = os.path.join(tmp_dir, 'template.docx')
+            input_path = os.path.join(tmp_dir, 'input.docx')
+            output_path = os.path.join(tmp_dir, 'output.docx')
+
+            with open(template_path, 'wb') as f:
+                f.write(template_data)
+            with open(input_path, 'wb') as f:
+                f.write(input_data)
+
+        else:
+            # 兼容文件上传方式
+            template_file = request.files.get('template')
+            input_file = request.files.get('input')
+
+            if not template_file or not input_file:
+                return jsonify({'error': '需要上传两个文件或提供 base64 数据'}), 400
+
+            # 保存临时文件
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_template:
+                template_file.save(tmp_template.name)
+                template_path = tmp_template.name
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as tmp_input:
+                input_file.save(tmp_input.name)
+                input_path = tmp_input.name
+
+            output_path = tempfile.mktemp(suffix='.docx')
 
         # 提取格式规则
         rules = extract_format_rules(template_path)
 
         # 应用格式
-        output_path = tempfile.mktemp(suffix='.docx')
         apply_format(input_path, output_path, rules)
 
         # 清理临时文件
         os.unlink(template_path)
         os.unlink(input_path)
 
-        # 返回处理后的文件
-        return send_file(output_path, as_attachment=True, download_name='formatted.docx')
+        # 如果是 JSON 请求，返回 base64 编码的文件
+        if request.is_json:
+            import base64
+            with open(output_path, 'rb') as f:
+                result_data = base64.b64encode(f.read()).decode()
+            os.unlink(output_path)
+            return jsonify({'file': result_data, 'message': '格式修正完成'})
+        else:
+            # 返回文件下载
+            return send_file(output_path, as_attachment=True, download_name='formatted.docx')
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
