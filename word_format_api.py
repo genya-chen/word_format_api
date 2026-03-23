@@ -13,6 +13,18 @@ import tempfile
 app = Flask(__name__)
 
 
+@app.route('/')
+def index():
+    """API 首页"""
+    return jsonify({
+        'service': 'Word格式修正API',
+        'version': '1.0',
+        'endpoint': '/format',
+        'method': 'POST',
+        'parameters': ['template', 'input']
+    })
+
+
 @app.route('/format', methods=['POST'])
 def format_document():
     """处理文档格式修正请求"""
